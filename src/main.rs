@@ -157,8 +157,8 @@ pub fn main() {
 
     let mut tokens = Tokens::new();
     let mut forkserver = ForkserverExecutor::builder()
-        .program("LD_LIBRARY_PATH=/home/t/Fuzzing/HDexecutor ./home/t/Fuzzing/HDexecutor/target/release/hdexecutor @@ /home/t/Fuzzing/HDexecutor/btrfs.img btrfs".to_string())
-        //.args([String::from("@@"), )
+        .program("LD_LIBRARY_PATH=. ./hdexecutor")
+        .args([String::from("@@"), String::from("btrfs.img"), String::from("btrfs")])
         .shmem_provider(&mut shmem_provider)
         .autotokens(&mut tokens)
        // .parse_afl_cmdline(args)
