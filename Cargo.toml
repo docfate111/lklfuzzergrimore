@@ -1,5 +1,5 @@
 [package]
-name = "baby_fuzzer_grimoire"
+name = "lkl_fuzzer_grimoire"
 version = "0.8.2"
 authors = ["Andrea Fioraldi <andreafioraldi@gmail.com>", "Dominik Maier <domenukk@gmail.com>"]
 edition = "2021"
@@ -19,4 +19,6 @@ opt-level = 3
 debug = true
 
 [dependencies]
-libafl = { path = "/home/t/Fuzzing/LibAFL/libafl/" }
+libafl = { path = "/home/t/Fuzzing/LibAFL/libafl/", features = ["std", "derive"] }
+clap = { version = "4.0", features = ["derive"] }
+nix = "0.25"

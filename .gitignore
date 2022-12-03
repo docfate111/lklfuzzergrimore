@@ -1,0 +1,7 @@
+target
+target/
+target/*
+corpus
+corpus/
+corpus/*
+*swp
