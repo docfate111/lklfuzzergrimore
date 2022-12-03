@@ -3,23 +3,23 @@ use std::ptr::write_volatile;
 use std::{fs, io::Read, path::PathBuf};
 
 use libafl::{
-    bolts::{current_nanos, rands::StdRand, tuples::tuple_list, AsSlice},
-    corpus::{InMemoryCorpus, OnDiskCorpus},
+    bolts::{shmem::StdShmemProvider, shmem::UnixShMemProvider, current_nanos, rands::StdRand, tuples::tuple_list},
+    corpus::{OnDiskCorpus},
     events::SimpleEventManager,
-    executors::{inprocess::InProcessExecutor, ExitKind},
+    executors::{forkserver::ForkserverExecutor},
     feedbacks::{CrashFeedback, MaxMapFeedback},
     fuzzer::{Evaluator, Fuzzer, StdFuzzer},
-    inputs::{GeneralizedInput, HasTargetBytes},
-    monitors::SimpleMonitor,
+    inputs::GeneralizedInput,
+    monitors::MultiMonitor,
     mutators::{
-        havoc_mutations, scheduled::StdScheduledMutator, GrimoireExtensionMutator,
-        GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
-        GrimoireStringReplacementMutator, Tokens,
+        scheduled::StdScheduledMutator, GrimoireExtensionMutator,
+        GrimoireRandomDeleteMutator,
+        GrimoireStringReplacementMutator,
     },
-    observers::StdMapObserver,
+    observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
     schedulers::QueueScheduler,
-    stages::{mutational::StdMutationalStage, GeneralizationStage},
-    state::{HasMetadata, StdState},
+    stages::mutational::StdMutationalStage,
+    state::StdState,
 };
 
 /// Coverage map with explicit assignments due to the lack of instrumentation
@@ -65,8 +65,7 @@ pub fn main() {
     }
 
 
-    let timeouts_corpus = OnDiskCorpus::new(PathBuf::from("./timeouts")).expect("Could not create timeout corpus");
-       // function to fuzz
+     /*  // function to fuzz
     let mut harness = |input: &GeneralizedInput| {
         let target_bytes = input.target_bytes();
         let bytes = target_bytes.as_slice();
@@ -74,20 +73,8 @@ pub fn main() {
         if is_sub(bytes, "fn".as_bytes()) {
             signals_set(2);
         }
-
-        if is_sub(bytes, "pippopippo".as_bytes()) {
-            signals_set(3);
-        }
-
-        unsafe {
-            if input.grimoire_mutated {
-                // println!(">>> {:?}", input.generalized());
-                println!(">>> {:?}", std::str::from_utf8_unchecked(bytes));
-            }
-        }
-        signals_set(1);
         ExitKind::Ok
-    };
+    };*/
 
     // Create an observation channel using the signals map
     let observer = StdMapObserver::new("signals", unsafe { &mut SIGNALS });
@@ -95,6 +82,19 @@ pub fn main() {
 
     // Feedback to rate the interestingness of an input
     let mut feedback = MaxMapFeedback::new_tracking(&observer, false, true);
+
+    const MAP_SIZE: usize = 65536;
+    let mut shmem_provider = UnixShMemProvider::new().unwrap();
+    // The coverage map shared between observer and executor
+    let mut shmem = shmem_provider.new_shmem(MAP_SIZE).unwrap();
+    //let the forkserver know the shmid
+    shmem.write_to_env("__AFL_SHM_ID").unwrap();
+    let shmem_buf = shmem.as_mut_slice();
+    // write shared memory id to environment so Executor knows about it
+            // Create an observation channel using the signals map
+    let edges_observer = HitcountsMapObserver::new(StdMapObserver::new("shared_mem",
+                 shmem_buf));
+    let mut feedback = MaxMapFeedback::new_tracking(&edges_observer, true, true);
 
     // A feedback to choose if an input is a solution or not
     let mut objective = CrashFeedback::new();
@@ -104,7 +104,7 @@ pub fn main() {
         // RNG
         StdRand::with_seed(current_nanos()),
         // Corpus that will be evolved, we keep it in memory for performance
-        InMemoryCorpus::new(),
+        OnDiskCorpus::new(PathBuf::from("./corpus")).unwrap(),
         // Corpus in which we store solutions (crashes in this example),
         // on disk so the user can get them after stopping the fuzzer
         OnDiskCorpus::new(PathBuf::from("./crashes")).unwrap(),
@@ -121,22 +121,22 @@ pub fn main() {
     }*/
 
     // The Monitor trait define how the fuzzer stats are reported to the user
-    let monitor = SimpleMonitor::new(|s| println!("{}", s));
-
+    let monitor = MultiMonitor::new(|s| println!("{}", s));
     // The event manager handle the various events generated during the fuzzing loop
     // such as the notification of the addition of a new item to the corpus
     let mut mgr = SimpleEventManager::new(monitor);
-
+    //let mut mgr = SimpleEventManager::new(stats);
     // A queue policy to get testcasess from the corpus
     let scheduler = QueueScheduler::new();
 
     // A fuzzer with feedbacks and a corpus scheduler
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
-    let generalization = GeneralizationStage::new(&observer);
+    //let generalization = GeneralizationStage::new(&observer);
 
     // Create the executor for an in-process function with just one observer
-    let mut executor = InProcessExecutor::new(
+    /*let mut executor = InProcessExecutor::new(
+        // not in scope anymore 
         &mut harness,
         tuple_list!(observer),
         &mut fuzzer,
@@ -144,25 +144,31 @@ pub fn main() {
         &mut mgr,
     )
     .expect("Failed to create the Executor");
+    */
+    let program = 
+    let mut executor = ForkserverExecutor::builder()
+                    .is_persistent(true)
+                    .build_dynamic_map(edges_observer, tuple_list!(time_observer))
+                    
+        .program("LD_LIBRARY_PATH=/home/t/Fuzzing/HDexecutor ./home/t/Fuzzing/HDexecutor/target/release/hdexecutor".to_string())
+                    .args(
+    &[String::from("@@"), "/home/t/Fuzzing/HDexecutor/btrfs.img".to_string(), "btrfs".to_string()])
+                    .shmem_provider(&mut shmem_provider)
+                    .coverage_map_size(MAP_SIZE).unwrap();
 
-    // Setup a mutational stage with a basic bytes mutator
-    let mutator = StdScheduledMutator::with_max_stack_pow(havoc_mutations(), 2);
     let grimoire_mutator = StdScheduledMutator::with_max_stack_pow(
         tuple_list!(
             GrimoireExtensionMutator::new(),
-            GrimoireRecursiveReplacementMutator::new(),
             GrimoireStringReplacementMutator::new(),
-            // give more probability to avoid large inputs
-            GrimoireRandomDeleteMutator::new(),
             GrimoireRandomDeleteMutator::new(),
         ),
         3,
     );
+    
     let mut stages = tuple_list!(
-        generalization,
-        StdMutationalStage::new(mutator),
         StdMutationalStage::new(grimoire_mutator)
     );
+
 
     for input in initial_inputs {
         fuzzer
