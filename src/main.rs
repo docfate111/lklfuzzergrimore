@@ -19,7 +19,12 @@ use libafl::{
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::BytesInput,
     monitors::SimpleMonitor,
-    mutators::{scheduled::havoc_mutations, tokens_mutations, StdScheduledMutator, Tokens},
+    mutators::{
+        GrimoireExtensionMutator,
+        GrimoireRandomDeleteMutator,
+        GrimoireStringReplacementMutator,
+        scheduled::havoc_mutations, tokens_mutations, 
+        StdScheduledMutator, Tokens},
     observers::{HitcountsMapObserver, MapObserver, StdMapObserver, TimeObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::mutational::StdMutationalStage,
@@ -128,7 +133,7 @@ pub fn main() {
         // RNG
         StdRand::with_seed(current_nanos()),
         // Corpus that will be evolved, we keep it in memory for performance
-        InMemoryCorpus::<BytesInput>::new(),
+        InMemoryCorpus::new(),
         // Corpus in which we store solutions (crashes in this example),
         // on disk so the user can get them after stopping the fuzzer
         OnDiskCorpus::new(PathBuf::from("./crashes")).unwrap(),
@@ -157,8 +162,8 @@ pub fn main() {
 
     let mut tokens = Tokens::new();
     let mut forkserver = ForkserverExecutor::builder()
-        .program("LD_LIBRARY_PATH=. ./hdexecutor")
-        .args([String::from("@@"), String::from("btrfs.img"), String::from("btrfs")])
+        .program("./hdexecutor")
+        .args([String::from("corpus/serialized1YIWHT2N19HM"), String::from("target/btrfs.img"), String::from("btrfs")])
         .shmem_provider(&mut shmem_provider)
         .autotokens(&mut tokens)
        // .parse_afl_cmdline(args)
@@ -191,7 +196,13 @@ pub fn main() {
 
     // Setup a mutational stage with a basic bytes mutator
     let mutator =
-        StdScheduledMutator::with_max_stack_pow(havoc_mutations().merge(tokens_mutations()), 6);
+        StdScheduledMutator::with_max_stack_pow(
+            tuple_list!(
+                  GrimoireExtensionMutator::new(),
+                              GrimoireStringReplacementMutator::new(),
+                                          GrimoireRandomDeleteMutator::new(),
+            )
+            , 3);
     let mut stages = tuple_list!(StdMutationalStage::new(mutator));
 
     fuzzer
