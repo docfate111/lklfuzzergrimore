@@ -19,6 +19,8 @@ opt-level = 3
 debug = true
 
 [dependencies]
+hdexecutor = "0.1.1"
+hdrepresentation = "0.1.851"
 libafl = { path = "/home/t/Fuzzing/LibAFL/libafl/", features = ["std", "derive"] }
 clap = { version = "4.0", features = ["derive"] }
 nix = "0.25"
