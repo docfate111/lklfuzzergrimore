@@ -5,3 +5,7 @@ corpus
 corpus/
 corpus/*
 *swp
+linux
+linux/
+linux/*
+*img

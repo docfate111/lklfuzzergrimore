@@ -1,45 +1,47 @@
-use core::time::Duration;
+#[cfg(linux)]
+use std::ptr::write_volatile;
 use std::{fs, io::Read, path::PathBuf};
-use clap::{self, Parser};
+
 use libafl::{
-    bolts::{
-        current_nanos,
-        rands::StdRand,
-        shmem::{ShMem, ShMemProvider, UnixShMemProvider},
-        tuples::{tuple_list, MatchName, Merge},
-        AsMutSlice,
-    },
-    corpus::{Corpus, InMemoryCorpus, OnDiskCorpus},
+    bolts::{current_nanos, rands::StdRand, tuples::tuple_list, AsSlice},
+    corpus::{InMemoryCorpus, OnDiskCorpus},
     events::SimpleEventManager,
-    executors::{
-        forkserver::{ForkserverExecutor, TimeoutForkserverExecutor},
-        HasObservers,
-    },
-    feedback_and_fast, feedback_or,
+    executors::{inprocess::InProcessExecutor, ExitKind},
+    feedback_or,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback},
-    fuzzer::{Fuzzer, StdFuzzer},
-    inputs::{BytesInput, GeneralizedInput},
+    fuzzer::{Evaluator, Fuzzer, StdFuzzer},
+    inputs::{GeneralizedInput, HasTargetBytes},
     monitors::SimpleMonitor,
-    mutators::{scheduled::havoc_mutations, tokens_mutations, StdScheduledMutator, Tokens},
-    observers::{HitcountsMapObserver, MapObserver, StdMapObserver, TimeObserver},
-    schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
-    stages::mutational::StdMutationalStage,
-    state::{HasCorpus, HasMetadata, StdState},
+    mutators::{
+        //havoc_mutations, 
+        scheduled::StdScheduledMutator, GrimoireExtensionMutator,
+        GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
+        GrimoireStringReplacementMutator, Tokens,
+    },
+    observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
+    schedulers::QueueScheduler,
+    stages::{mutational::StdMutationalStage, GeneralizationStage},
+    state::{HasMetadata, StdState},
 };
-use nix::sys::signal::Signal;
+
+
+use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
+
+use hdrepresentation::Program;
+use hdexecutor::exec;
+
 
 #[allow(clippy::similar_names)]
 pub fn libafl_main() {
-    const MAP_SIZE: usize = 65536;
-
     let mut initial_inputs = vec![];
     for entry in fs::read_dir("./corpus").unwrap() {
         let path = entry.unwrap().path();
         let attr = fs::metadata(&path);
         if attr.is_err() {
-                continue;
+            continue;
         }
         let attr = attr.unwrap();
+
         if attr.is_file() && attr.len() > 0 {
             println!("Loading file {:?} ...", &path);
             let mut file = fs::File::open(path).expect("no file found");
@@ -49,45 +51,53 @@ pub fn libafl_main() {
             initial_inputs.push(input);
         }
     }
-    // The unix shmem provider supported by AFL++ for shared memory
-    /*let mut shmem_provider = UnixShMemProvider::new().unwrap();
 
-    // The coverage map shared between observer and executor
-    let mut shmem = shmem_provider.new_shmem(MAP_SIZE).unwrap();
-    // let the forkserver know the shmid
-    shmem.write_to_env("__AFL_SHM_ID").unwrap();
-    let shmem_buf = shmem.as_mut_slice();
+    // The closure that we want to fuzz
+    let mut harness = |input: &GeneralizedInput| {
+        let target_bytes = input.target_bytes();
+        let bytes = target_bytes.as_slice();
 
-    // Create an observation channel using the signals map
-    let edges_observer = HitcountsMapObserver::new(StdMapObserver::new("shared_mem", shmem_buf));
+            if input.grimoire_mutated {
+                // println!(">>> {:?}", input.generalized());
+                let p = unsafe { 
+                    Program::from_str(std::str::from_utf8_unchecked(bytes).to_string())
+                };
+                if p.is_err() {
+                    // fuzzer should ignore paths that break the parser
+                    // hopefully returning Ok avoids this path being explored
+                    return ExitKind::Ok;
+                }
+                let prog = p.unwrap();
+                // this can cause a segmentation fault in the C library
+                return match exec(&prog, "btrfs.img".to_string(), "btrfs".to_string()) {
+                    Err(_) => { ExitKind::Ok },
+                    Ok(_) => { ExitKind::Ok },
+                };
+            }
+        ExitKind::Ok
+    };
 
-    // Create an observation channel to keep track of the execution time
-    let time_observer = TimeObserver::new("time");
-
+    // Create an observation channel using the coverage map
+    let edges = unsafe { &mut EDGES_MAP[0..MAX_EDGES_NUM] };
+    let edges_observer = HitcountsMapObserver::new(StdMapObserver::new("edges",
+                     edges));
+   let time_observer = TimeObserver::new("time"); 
+    // Create an observation channel to keep track of the 
     // Feedback to rate the interestingness of an input
-    // This one is composed by two Feedbacks in OR
     let mut feedback = feedback_or!(
-        // New maximization map feedback linked to the edges observer and the feedback state
         MaxMapFeedback::new_tracking(&edges_observer, true, false),
-        // Time feedback, this one does not need a feedback state
         TimeFeedback::new_with_observer(&time_observer)
     );
 
     // A feedback to choose if an input is a solution or not
-    // We want to do the same crash deduplication that AFL does
-    let mut objective = feedback_and_fast!(
-        // Must be a crash
-        CrashFeedback::new(),
-        // Take it onlt if trigger new coverage over crashes
-        MaxMapFeedback::new(&edges_observer)
-    );
+    let mut objective = CrashFeedback::new();
 
     // create a State from scratch
     let mut state = StdState::new(
         // RNG
         StdRand::with_seed(current_nanos()),
         // Corpus that will be evolved, we keep it in memory for performance
-        InMemoryCorpus::<BytesInput>::new(),
+        InMemoryCorpus::new(),
         // Corpus in which we store solutions (crashes in this example),
         // on disk so the user can get them after stopping the fuzzer
         OnDiskCorpus::new(PathBuf::from("./crashes")).unwrap(),
@@ -99,6 +109,10 @@ pub fn libafl_main() {
     )
     .unwrap();
 
+    if state.metadata().get::<Tokens>().is_none() {
+        state.add_metadata(Tokens::from([b"FOO".to_vec(), b"BAR".to_vec()]));
+    }
+
     // The Monitor trait define how the fuzzer stats are reported to the user
     let monitor = SimpleMonitor::new(|s| println!("{}", s));
 
@@ -106,66 +120,50 @@ pub fn libafl_main() {
     // such as the notification of the addition of a new item to the corpus
     let mut mgr = SimpleEventManager::new(monitor);
 
-    // A minimization+queue policy to get testcasess from the corpus
-    let scheduler = IndexesLenTimeMinimizerScheduler::new(QueueScheduler::new());
+    // A queue policy to get testcasess from the corpus
+    let scheduler = QueueScheduler::new();
 
     // A fuzzer with feedbacks and a corpus scheduler
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
-    // If we should debug the child
-    let debug_child = opt.debug_child;
+    let generalization = GeneralizationStage::new(&edges_observer);
 
-    // Create the executor for the forkserver
-    let args = opt.arguments;
-
-    let mut tokens = Tokens::new();
-    let mut forkserver = ForkserverExecutor::builder()
-        .program(opt.executable)
-        .debug_child(debug_child)
-        .shmem_provider(&mut shmem_provider)
-        .autotokens(&mut tokens)
-        .parse_afl_cmdline(args)
-        //.coverage_map_size(MAP_SIZE)
-        .build(tuple_list!(time_observer, edges_observer))
-        .unwrap();
-
-    if let Some(dynamic_map_size) = forkserver.coverage_map_size() {
-        forkserver
-            .observers_mut()
-            .match_name_mut::<HitcountsMapObserver<StdMapObserver<'_, u8, false>>>("shared_mem")
-            .unwrap()
-            .downsize_map(dynamic_map_size);
-    }
-
-    let mut executor = TimeoutForkserverExecutor::with_signal(
-        forkserver,
-        Duration::from_millis(opt.timeout),
-        opt.signal,
+    // Create the executor for an in-process function with just one observer
+    let mut executor = InProcessExecutor::new(
+        &mut harness,
+        tuple_list!(edges_observer, time_observer),
+        &mut fuzzer,
+        &mut state,
+        &mut mgr,
     )
-    .expect("Failed to create the executor.");
-
-    // In case the corpus is empty (on first run), reset
-    if state.corpus().count() < 1 {
-        state
-            .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &corpus_dirs)
-            .unwrap_or_else(|err| {
-                panic!(
-                    "Failed to load initial corpus at {:?}: {:?}",
-                    &corpus_dirs, err
-                )
-            });
-        println!("We imported {} inputs from disk.", state.corpus().count());
-    }
-
-    state.add_metadata(tokens);
+    .expect("Failed to create the Executor");
 
     // Setup a mutational stage with a basic bytes mutator
-    let mutator =
-        StdScheduledMutator::with_max_stack_pow(havoc_mutations().merge(tokens_mutations()), 6);
-    let mut stages = tuple_list!(StdMutationalStage::new(mutator));
+    //let mutator = StdScheduledMutator::with_max_stack_pow(havoc_mutations(), 2);
+    let grimoire_mutator = StdScheduledMutator::with_max_stack_pow(
+        tuple_list!(
+            GrimoireExtensionMutator::new(),
+            GrimoireRecursiveReplacementMutator::new(),
+            GrimoireStringReplacementMutator::new(),
+            // give more probability to avoid large inputs
+            GrimoireRandomDeleteMutator::new(),
+            GrimoireRandomDeleteMutator::new(),
+        ),
+        3,
+    );
+    let mut stages = tuple_list!(
+        generalization,
+        //StdMutationalStage::new(mutator),
+        StdMutationalStage::new(grimoire_mutator)
+    );
+
+    for input in initial_inputs {
+        fuzzer
+            .evaluate_input(&mut state, &mut executor, &mut mgr, input)
+            .unwrap();
+    }
 
     fuzzer
         .fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)
         .expect("Error in the fuzzing loop");
-*/
-        }
+}
