@@ -27,8 +27,8 @@ use libafl::{
 
 use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
 
-use hdrepresentation::Program;
-use hdexecutor::exec;
+//use hdrepresentation::Program;
+//use hdexecutor::exec;
 
 
 #[allow(clippy::similar_names)]
