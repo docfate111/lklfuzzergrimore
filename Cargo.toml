@@ -26,7 +26,7 @@ num_cpus = "1.0"
 [dependencies]
 hdexecutor = "0.1.1"
 hdrepresentation = "0.1.851"
-libafl = { path = "/home/t/Fuzzing/LibAFL-0.8.2/libafl", features = ["std", "derive"] }
+libafl = { path = "/home/t/Fuzzing/LibAFL-0.8.2/libafl", features = ["std", "derive", "default"] }
 libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
 clap = { version = "4.0", features = ["derive"] }
 nix = "0.25"
