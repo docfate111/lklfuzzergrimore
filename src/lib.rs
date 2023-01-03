@@ -6,7 +6,7 @@ use clap::Parser;
 use core::time::Duration;
 use std::{
     env, fs,
-    io::{Read, Write},
+    io::{Read},
     net::SocketAddr,
     path::PathBuf,
 };
@@ -19,6 +19,7 @@ use libafl::{
         rands::StdRand,
         shmem::{ShMemProvider, StdShMemProvider},
         tuples::tuple_list,
+	AsSlice,
     },
     corpus::{CachedOnDiskCorpus, Corpus, OnDiskCorpus},
     events::EventConfig,
@@ -27,7 +28,7 @@ use libafl::{
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
     inputs::{
-        EncodedInput, Input, InputDecoder, InputEncoder, NaiveTokenizer, TokenInputEncoderDecoder,
+       Input,  GeneralizedInput, HasTargetBytes
     },
     monitors::MultiMonitor,
     mutators::{StdScheduledMutator, GrimoireExtensionMutator,
@@ -102,7 +103,7 @@ struct Opt {
     timeout: Duration,
 }
 
-const NUM_GENERATED: usize = 4096;
+const NUM_GENERATED: usize = 28;
 const CORPUS_CACHE: usize = 4096;
 
 /// The main fn, `no_mangle` as it is a C symbol
@@ -119,31 +120,24 @@ pub fn libafl_main() {
     fs::create_dir_all(&initial_dir).unwrap();
 
     let mut initial_inputs = vec![];
-    let mut tokenizer = NaiveTokenizer::default();
-let mut encoder_decoder = TokenInputEncoderDecoder::new();
     if let Some(repro) = opt.repro {
         for i in 0..NUM_GENERATED {
             let mut file =
                 fs::File::open(initial_dir.join(format!("id_{i}"))).expect("no file found");
             let mut buffer = vec![];
             file.read_to_end(&mut buffer).expect("buffer overflow");
+        	  let input = GeneralizedInput::new(buffer);
+            initial_inputs.push(input);
+	}
 
-            std::mem::drop(
-                encoder_decoder
-                    .encode(&buffer, &mut tokenizer)
-                    .expect("encoding failed"),
-            );
-        }
-
-        let input = EncodedInput::from_file(repro).unwrap();
-
+        let input = GeneralizedInput::from_file(repro).unwrap();
+	let n = input.target_bytes();
+	let bytes = n.as_slice();
         let args: Vec<String> = env::args().collect();
         if libfuzzer_initialize(&args) == -1 {
             println!("Warning: LLVMFuzzerInitialize failed with -1");
         }
 
-        let mut bytes = vec![];
-        encoder_decoder.decode(&input, &mut bytes).unwrap();
         unsafe {
             println!("Testcase: {}", std::str::from_utf8_unchecked(&bytes));
         }
@@ -152,17 +146,6 @@ let mut encoder_decoder = TokenInputEncoderDecoder::new();
         return;
     }
 
-
-    let mut bytes = vec![];
-    for i in 0..NUM_GENERATED {
-        let mut file = fs::File::create(initial_dir.join(format!("id_{i}"))).unwrap();
-        file.write_all(&bytes).unwrap();
-
-        let input = encoder_decoder
-            .encode(&bytes, &mut tokenizer)
-            .expect("encoding failed");
-        initial_inputs.push(input);
-    }
 
     println!(
         "Workdir: {:?}",
@@ -221,16 +204,9 @@ let mut encoder_decoder = TokenInputEncoderDecoder::new();
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
         // The wrapped harness function, calling out to the LLVM-style harness
-        let mut bytes = vec![];
-        let mut harness = |input: &EncodedInput| {
-            bytes.clear();
-            encoder_decoder.decode(input, &mut bytes).unwrap();
-            if *bytes.last().unwrap() != 0 {
-                bytes.push(0);
-            }
-            //unsafe {
-            //println!(">>> {}", std::str::from_utf8_unchecked(&bytes));
-            //}
+        let mut harness = |input: &GeneralizedInput| {
+            let target_bytes = input.target_bytes();
+            let bytes = target_bytes.as_slice();
             libfuzzer_test_one_input(&bytes);
             ExitKind::Ok
         };
