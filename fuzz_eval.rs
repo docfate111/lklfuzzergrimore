@@ -1,5 +1,5 @@
 use libafl::executors::ExitKind;
-use hdrepresentation::Programl
+use hdrepresentation::Program;
 use hdexecutor::exec;
 
 i64 LLVMFuzzerTestOneInput(u8 &Data, usize size) {

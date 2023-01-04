@@ -4,12 +4,7 @@
 
 use clap::Parser;
 use core::time::Duration;
-use std::{
-    env, fs,
-    io::{Read},
-    net::SocketAddr,
-    path::PathBuf,
-};
+use std::{env, fs, io::Read, net::SocketAddr, path::PathBuf};
 
 use libafl::{
     bolts::{
@@ -19,7 +14,7 @@ use libafl::{
         rands::StdRand,
         shmem::{ShMemProvider, StdShMemProvider},
         tuples::tuple_list,
-	AsSlice,
+        AsSlice,
     },
     corpus::{CachedOnDiskCorpus, Corpus, OnDiskCorpus},
     events::EventConfig,
@@ -27,13 +22,12 @@ use libafl::{
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
-    inputs::{
-       Input,  GeneralizedInput, HasTargetBytes
-    },
+    inputs::{GeneralizedInput, HasTargetBytes, Input},
     monitors::MultiMonitor,
-    mutators::{StdScheduledMutator, GrimoireExtensionMutator,
-            GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
-            GrimoireStringReplacementMutator},
+    mutators::{
+        GrimoireExtensionMutator, GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
+        GrimoireStringReplacementMutator, StdScheduledMutator,
+    },
     observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::mutational::StdMutationalStage,
@@ -126,13 +120,13 @@ pub fn libafl_main() {
                 fs::File::open(initial_dir.join(format!("id_{i}"))).expect("no file found");
             let mut buffer = vec![];
             file.read_to_end(&mut buffer).expect("buffer overflow");
-        	  let input = GeneralizedInput::new(buffer);
+            let input = GeneralizedInput::new(buffer);
             initial_inputs.push(input);
-	}
+        }
 
         let input = GeneralizedInput::from_file(repro).unwrap();
-	let n = input.target_bytes();
-	let bytes = n.as_slice();
+        let n = input.target_bytes();
+        let bytes = n.as_slice();
         let args: Vec<String> = env::args().collect();
         if libfuzzer_initialize(&args) == -1 {
             println!("Warning: LLVMFuzzerInitialize failed with -1");
@@ -145,7 +139,6 @@ pub fn libafl_main() {
 
         return;
     }
-
 
     println!(
         "Workdir: {:?}",
@@ -164,7 +157,8 @@ pub fn libafl_main() {
 
         // Create an observation channel using the coverage map
         let edges = unsafe { &mut EDGES_MAP[0..MAX_EDGES_NUM] };
-        let edges_observer = HitcountsMapObserver::new(StdMapObserver::new("edges", edges));
+        let edges_observer =
+            unsafe { HitcountsMapObserver::new(StdMapObserver::new("edges", edges)) };
 
         // Create an observation channel to keep track of the execution time
         let time_observer = TimeObserver::new("time");
@@ -245,27 +239,20 @@ pub fn libafl_main() {
         }
 
         // Setup a basic mutator with a mutational stage
-        let mutator = 
-StdScheduledMutator::with_max_stack_pow(
+        let mutator = StdScheduledMutator::with_max_stack_pow(
             tuple_list!(
-                            GrimoireExtensionMutator::new(),
-                                        GrimoireRecursiveReplacementMutator::new(),
-                                                    GrimoireStringReplacementMutator::new(),
-                                                                // give more probability to avoid
-                                                    // large inputs
-                    GrimoireRandomDeleteMutator::new(),  
-                    GrimoireRandomDeleteMutator::new(),
-                                                                                    ),
-                                                                                             3,
-                                                                                                 );
-                                                                                                     let
-                                                                                                     mut
-                                                                                                     stages
-                                                                                                     =
-                                                                                                     tuple_list!(
-                                                                                                                             StdMutationalStage::new(mutator)
-                                                                                                                                 );
-                                                    
+                GrimoireExtensionMutator::new(),
+                GrimoireRecursiveReplacementMutator::new(),
+                GrimoireStringReplacementMutator::new(),
+                // give more probability to avoid
+                // large inputs
+                GrimoireRandomDeleteMutator::new(),
+                GrimoireRandomDeleteMutator::new(),
+            ),
+            3,
+        );
+        let mut stages = tuple_list!(StdMutationalStage::new(mutator));
+
         fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut restarting_mgr)?;
         Ok(())
     };
