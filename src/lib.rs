@@ -44,9 +44,9 @@ fn timeout_from_millis_str(time: &str) -> Result<Duration, Error> {
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "libafl_quickjs",
-    about = "Fuzz quickjs with libafl",
-    author = "Andrea Fioraldi <andreafioraldi@gmail.com>"
+    name = "libafl_lkl",
+    about = "Fuzz lkl with libafl",
+    author = "th3lsh3ll + Andrea Fioraldi <andreafioraldi@gmail.com>"
 )]
 struct Opt {
     #[arg(

@@ -11,7 +11,8 @@ fn main() {
             .status()
             .unwrap();
         Command::new("make")
-            .args(&["ARCH=lkl", "-C", "linux/tools/lkl"])
+            .args(&["\"KCFLAGS=-fsanitize-coverage=trace-pc-guard\"", "ARCH=lkl",
+		 "-C", "linux/tools/lkl", "-j`nproc`"])
             .current_dir(&Path::new(&project_dir))
             .status()
             .unwrap();

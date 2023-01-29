@@ -1,0 +1,13 @@
+scripts/Makefile.asm-generic:25: redundant generic-y found in arch/lkl/include/uapi/asm/Kbuild: siginfo.h
+scripts/Makefile.asm-generic:25: redundant generic-y found in arch/lkl/include/asm/Kbuild: atomic.h barrier.h bitops.h bug.h bugs.h cacheflush.h checksum.h compat.h current.h delay.h device.h div64.h emergency-restart.h exec.h ftrace.h futex.h hardirq.h hw_irq.h irq_regs.h irq_work.h kdebug.h kprobes.h linkage.h local.h local64.h mmiowb.h mmu.h module.h percpu.h pgalloc.h preempt.h sections.h serial.h simd.h switch_to.h timex.h tlbflush.h topology.h trace_clock.h uaccess.h unaligned.h vga.h word-at-a-time.h
+<stdin>:1517:2: warning: syscall clone3 not implemented [-W#warnings]
+#warning syscall clone3 not implemented
+ ^
+1 warning generated.
+make[2]: *** [scripts/Makefile.build:288: arch/lkl/kernel/irq.o] Interrupt
+make[2]: *** [scripts/Makefile.build:288: arch/lkl/kernel/threads.o] Interrupt
+make[1]: *** [Makefile:1836: arch/lkl/kernel] Interrupt
+make[2]: *** [scripts/Makefile.build:288: init/do_mounts.o] Interrupt
+make[2]: *** [scripts/Makefile.build:288: init/main.o] Interrupt
+make[1]: *** [Makefile:1836: init] Interrupt
+make: *** [Makefile:81: /home/t/fuzzing/lklfuzzergrimore/linux/tools/lkl/lib/lkl.o] Interrupt

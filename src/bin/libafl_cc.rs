@@ -11,21 +11,21 @@ pub fn main() {
                 "++" | "pp" | "xx" => true,
                 _ => panic!("Could not figure out if c or c++ warpper was called. Expected {dir:?} to end with c or cxx"),
         };
-                                                dir.pop();
+        dir.pop();
 
-                                                        let mut cc = ClangWrapper::new();
-                                                                if let Some(code) = cc
-                                                                                .cpp(is_cpp)
-                                                                                                .parse_args(&args)
-                                                                                                            .expect("Failed to parse the command line")
-                                                                                                                        .link_staticlib(&dir, "libafl_quickjs")
-                                                                                                                                    .add_arg("-fsanitize-coverage=trace-pc-guard")
-                                                                                                                                                .run()
-                                                                                                                                                            .expect("Failed to run the wrapped compiler")
-                                                                                                                                                                    {
-                                                                                                                                                                                    std::process::exit(code);
-                                                                                                                                                                                            }
-                                                                    } else {
-                                                                                panic!("LibAFL CC: No Arguments given");
-                                                                                    }
+        let mut cc = ClangWrapper::new();
+        if let Some(code) = cc
+            .cpp(is_cpp)
+            .parse_args(&args)
+            .expect("Failed to parse the command line")
+            //.link_staticlib(&dir, "lkl")
+            .add_arg("-fsanitize-coverage=trace-pc-guard")
+            .run()
+            .expect("Failed to run the wrapped compiler")
+        {
+            std::process::exit(code);
+        }
+    } else {
+        panic!("LibAFL CC: No Arguments given");
+    }
 }

@@ -13,10 +13,10 @@ unset CXX
 unset CFLAGS
 unset CXXFLAGS
 
-cargo +nightly build --release
-
+cargo +nightly build --bin libafl_cc
+cargo +nightly build --bin libafl_cxx
 export CC=`pwd`/target/release/libafl_cc
 export CXX=`pwd`/target/release/libafl_cxx
 export CFLAGS='-fsanitize-coverage=trace-pc-guard'
 export CXXFLAGS='-fsanitize-coverage=trace-pc-guard'
-
+cargo +nightly build

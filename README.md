@@ -1,5 +1,7 @@
 #lklfuzzergrimore
 
+dependencies: clang rust
+
 uses LibAFL and [Grimoire fuzzer](https://www.usenix.org/system/files/sec19-blazytko.pdf), a fully automated coverage-guided fuzzer which works without any form of human interaction or pre-configuration. `libafl::mutators::grimoire` provides four mutators :
 `GrimoireExtensionMutator`,`GrimoireRecursiveReplacementMutator`,
 `GrimoireStringReplacementMutator`,`GrimoireRandomDeleteMutator`.
