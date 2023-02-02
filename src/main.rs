@@ -36,6 +36,26 @@ use libafl::{
 };
 
 use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
+use libafl::executors::ExitKind;
+use hdrepresentation::Program;
+use hdexecutor::exec;
+   
+i64 LLVMFuzzerTestOneInput(u8 &Data, usize size) {
+      if size > 0 {
+      let butes = data.as_slice(); // Data is entire json file as string
+      let p = unsafe {
+          Program::from_str(std::str::from_utf8_unchecked(bytes).to_string())
+     };
+      if p.is_err() {
+          return ExitKind::Ok;
+      }
+      let prog = p.unwrap();
+      return match exec(&prog, "btrfs.img".to_string(), "btrfs".to_string()) {
+          Err(_) => { ExitKind::Ok },
+          Ok(_) => { ExitKind::Ok },
+      };
+      }
+  }
 
 /// Parses a millseconds int into a [`Duration`], used for commandline arg parsing
 fn timeout_from_millis_str(time: &str) -> Result<Duration, Error> {
@@ -101,9 +121,9 @@ const NUM_GENERATED: usize = 28;
 const CORPUS_CACHE: usize = 4096;
 
 /// The main fn, `no_mangle` as it is a C symbol
-#[no_mangle]
-#[allow(clippy::too_many_lines)]
-pub fn libafl_main() {
+//#[no_mangle]
+//#[allow(clippy::too_many_lines)]
+pub fn main() {
     // Registry the metadata types used in this fuzzer
     // Needed only on no_std
     //RegistryBuilder::register::<Tokens>();
