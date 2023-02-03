@@ -35,27 +35,22 @@ use libafl::{
     Error, Evaluator,
 };
 
-use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
-use libafl::executors::ExitKind;
+use hdlibaflexecutor::exec;
 use hdrepresentation::Program;
-use hdexecutor::exec;
-   
-i64 LLVMFuzzerTestOneInput(u8 &Data, usize size) {
-      if size > 0 {
-      let butes = data.as_slice(); // Data is entire json file as string
-      let p = unsafe {
-          Program::from_str(std::str::from_utf8_unchecked(bytes).to_string())
-     };
-      if p.is_err() {
-          return ExitKind::Ok;
-      }
-      let prog = p.unwrap();
-      return match exec(&prog, "btrfs.img".to_string(), "btrfs".to_string()) {
-          Err(_) => { ExitKind::Ok },
-          Ok(_) => { ExitKind::Ok },
-      };
-      }
-  }
+use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
+
+fn test_one_input(data: &[u8]) -> ExitKind {
+    let bytes = data.as_slice(); // Data is entire json file as string
+    let p = unsafe { Program::from_str(std::str::from_utf8_unchecked(bytes).to_string()) };
+    if p.is_err() {
+        return ExitKind::Ok;
+    }
+    let prog = p.unwrap();
+    return match exec(&prog, "btrfs.img".to_string(), "btrfs".to_string()) {
+        Err(_) => ExitKind::Ok,
+        Ok(_) => ExitKind::Ok,
+    };
+}
 
 /// Parses a millseconds int into a [`Duration`], used for commandline arg parsing
 fn timeout_from_millis_str(time: &str) -> Result<Duration, Error> {
@@ -77,15 +72,6 @@ struct Opt {
         name = "CORES"
     )]
     cores: Cores,
-
-    #[arg(
-        short = 'p',
-        long,
-        help = "Choose the broker TCP port, default is 1337",
-        name = "PORT"
-    )]
-    broker_port: u16,
-
     #[arg(short = 'a', long, help = "Specify a remote broker", name = "REMOTE")]
     remote_broker_addr: Option<SocketAddr>,
 
@@ -155,7 +141,7 @@ pub fn main() {
         unsafe {
             println!("Testcase: {}", std::str::from_utf8_unchecked(&bytes));
         }
-        libfuzzer_test_one_input(&bytes);
+        test_one_input(&bytes);
 
         return;
     }
@@ -221,7 +207,7 @@ pub fn main() {
         let mut harness = |input: &GeneralizedInput| {
             let target_bytes = input.target_bytes();
             let bytes = target_bytes.as_slice();
-            libfuzzer_test_one_input(&bytes);
+            test_one_input(&bytes);
             ExitKind::Ok
         };
 
@@ -283,7 +269,7 @@ pub fn main() {
         .monitor(stats)
         .run_client(&mut run_client)
         .cores(&opt.cores)
-        .broker_port(opt.broker_port)
+        .broker_port(1337)
         .remote_broker_addr(opt.remote_broker_addr)
         .stdout_file(Some("/dev/null"))
         .build()
