@@ -22,7 +22,7 @@ use libafl::{
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
-    inputs::{GeneralizedInput, HasTargetBytes, Input},
+    inputs::{BytesInput, GeneralizedInput, HasTargetBytes, Input},
     monitors::MultiMonitor,
     mutators::{
         GrimoireExtensionMutator, GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
@@ -46,7 +46,7 @@ fn test_one_input(data: &[u8]) -> ExitKind {
         return ExitKind::Ok;
     }
     let prog = p.unwrap();
-    return match exec(&prog, "btrfs.img".to_string(), "btrfs".to_string()) {
+    return match exec(&prog, "ext4.img".to_string(), "ext4".to_string()) {
         Err(_) => ExitKind::Ok,
         Ok(_) => ExitKind::Ok,
     };
@@ -115,8 +115,26 @@ pub fn main() {
     //RegistryBuilder::register::<Tokens>();
     let opt = Opt::parse();
 
-    let mut initial_dir = opt.output.clone();
-    initial_dir.push("initial");
+    let mut initial_inputs = vec![];
+    for entry in fs::read_dir("./corpus").unwrap() {
+        let path = entry.unwrap().path();
+        let attr = fs::metadata(&path);
+        if attr.is_err() {
+            continue;
+        }
+        let attr = attr.unwrap();
+
+        if attr.is_file() && attr.len() > 0 {
+            println!("Loading file {:?} ...", &path);
+            let mut file = fs::File::open(path).expect("no file found");
+            let mut buffer = vec![];
+            file.read_to_end(&mut buffer).expect("buffer overflow");
+            let input = BytesInput::new(buffer);
+            initial_inputs.push(input);
+        }
+    }
+    /*let mut initial_dir = opt.output.clone();
+    initial_dir.push("corpus");
     fs::create_dir_all(&initial_dir).unwrap();
 
     let mut initial_inputs = vec![];
@@ -144,7 +162,7 @@ pub fn main() {
         test_one_input(&bytes);
 
         return;
-    }
+    }*/
 
     println!(
         "Workdir: {:?}",
@@ -202,12 +220,11 @@ pub fn main() {
 
         // A fuzzer with feedbacks and a corpus scheduler
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
-
         // The wrapped harness function, calling out to the LLVM-style harness
         let mut harness = |input: &GeneralizedInput| {
             let target_bytes = input.target_bytes();
             let bytes = target_bytes.as_slice();
-            test_one_input(&bytes);
+	    test_one_input(&bytes);
             ExitKind::Ok
         };
 
@@ -238,7 +255,7 @@ pub fn main() {
                         &mut state,
                         &mut executor,
                         &mut restarting_mgr,
-                        input.clone(),
+                        input.clone().into(),
                     )
                     .unwrap();
             }
@@ -271,7 +288,7 @@ pub fn main() {
         .cores(&opt.cores)
         .broker_port(1337)
         .remote_broker_addr(opt.remote_broker_addr)
-        .stdout_file(Some("/dev/null"))
+        .stdout_file(Some("f"))
         .build()
         .launch()
     {
