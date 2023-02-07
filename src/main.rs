@@ -98,7 +98,7 @@ struct Opt {
         long,
         help = "Set the execution timeout in milliseconds, default is 1000",
         name = "TIMEOUT",
-        default_value = "1000"
+        default_value = "2000"
     )]
     timeout: Duration,
 }
