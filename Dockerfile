@@ -6,5 +6,5 @@ RUN apt update -y && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \    
     ln -s $(which python2) /usr/bin/python && \
    . $HOME/.cargo/env && mkdir /home/t && cd /home/t && git clone https://github.com/docfate111/libafl_cc-for-lkl.git && \
-    cd libafl_cc-for-lkl && cargo build --bin libafl_cc --release && cd / && \
-   git clone https://github.com/docfate111/lklfuzzergrimore && cd lklfuzzergrimore && cargo build 
+    cd libafl_cc-for-lkl && cargo build --bin libafl_cc --release && cp target/release/libafl_cc /usr/bin && cd / && \
+   git clone -b libaflexecutor https://github.com/docfate111/hdexecutor.git && cd hdexecutor 
