@@ -24,8 +24,6 @@ which = { version = "4.3" }
 num_cpus = "1.0"
 
 [dependencies]
-hdlibaflexecutor = "0.0.11"
-hdrepresentation = "0.1.851"
 libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", features = ["std", "derive", "default"] }
 libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
 clap = { version = "4.0", features = ["derive"] }
