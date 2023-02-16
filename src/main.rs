@@ -190,7 +190,7 @@ pub fn main() {
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 	// let mut tokens = Tokens::new();
         let mut forkserver = ForkserverExecutor::builder()
-        .program("LD_LIBRARY_PATH=. ./main")
+        .program("./main")
         .debug_child(true)
         //.shmem_provider(&mut shmem_provider)
         //.autotokens(&mut tokens)
