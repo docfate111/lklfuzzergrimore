@@ -25,7 +25,7 @@ use libafl::{
     inputs::{BytesInput, HasTargetBytes, Input},
     monitors::MultiMonitor,
     mutators::{
-        GrimoireExtensionMutator, GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
+        havoc_mutations, GrimoireExtensionMutator, GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
         GrimoireStringReplacementMutator, StdScheduledMutator,
     },
     observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
@@ -197,7 +197,6 @@ pub fn main() {
 	    test_one_input(&bytes);
             ExitKind::Ok
         };
-
         // Create the executor for an in-process function with one observer for edge coverage and one for the execution time
         let mut executor = TimeoutExecutor::new(
             InProcessExecutor::new(
@@ -230,9 +229,9 @@ pub fn main() {
                     .unwrap();
             }
         }
-
+	let mutator = StdScheduledMutator::with_max_stack_pow(havoc_mutations(), 2);
         // Setup a basic mutator with a mutational stage
-        let mutator = StdScheduledMutator::with_max_stack_pow(
+        let grimore_mutator = StdScheduledMutator::with_max_stack_pow(
             tuple_list!(
                 GrimoireExtensionMutator::new(),
                 GrimoireRecursiveReplacementMutator::new(),
@@ -244,8 +243,11 @@ pub fn main() {
             ),
             3,
         );
-        let mut stages = tuple_list!(StdMutationalStage::new(mutator));
-
+            let mut stages = tuple_list!(
+        //generalization,
+        StdMutationalStage::new(mutator),
+        StdMutationalStage::transforming(grimore_mutator)
+        );
         fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut restarting_mgr)?;
         Ok(())
     };

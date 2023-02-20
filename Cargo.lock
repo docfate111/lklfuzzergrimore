@@ -616,44 +616,6 @@ dependencies = [
 
 [[package]]
 name = "libafl"
-version = "0.8.2"
-source = "git+https://github.com/AFLplusplus/LibAFL.git?rev=977415c#977415cad25ad4b495a2b9dd96a2b0d39d8f1bbf"
-dependencies = [
- "ahash",
- "backtrace",
- "bincode",
- "byteorder",
- "crossterm",
- "ctor",
- "erased-serde",
- "hashbrown",
- "hostname",
- "intervaltree",
- "libc",
- "libm",
- "lock_api",
- "nix",
- "num-traits",
- "num_enum",
- "once_cell",
- "postcard",
- "regex",
- "rustversion",
- "serde",
- "serde_json",
- "static_assertions",
- "tui",
- "tuple_list",
- "typed-builder",
- "uds",
- "uuid",
- "wait-timeout",
- "windows",
- "xxhash-rust",
-]
-
-[[package]]
-name = "libafl"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6577668a8dd7eb728064f7232cd036b8fdb353535332ddd20ca1aab47de38243"
@@ -707,11 +669,12 @@ dependencies = [
 
 [[package]]
 name = "libafl_targets"
-version = "0.8.2"
-source = "git+https://github.com/AFLplusplus/LibAFL.git?rev=977415c#977415cad25ad4b495a2b9dd96a2b0d39d8f1bbf"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c73c5e3b117fcb8c9cb77e3975cd61fd351f4f0cbca894c808cb1b7820db286"
 dependencies = [
  "cc",
- "libafl 0.8.2",
+ "libafl",
  "rangemap",
  "serde",
 ]
@@ -751,7 +714,7 @@ dependencies = [
  "clap",
  "hdlibaflexecutor",
  "hdrepresentation",
- "libafl 0.9.0",
+ "libafl",
  "libafl_targets",
  "nix",
  "num_cpus",
