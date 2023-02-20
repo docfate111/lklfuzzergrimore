@@ -22,7 +22,7 @@ use libafl::{
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
-    inputs::{BytesInput, GeneralizedInput, HasTargetBytes, Input},
+    inputs::{BytesInput, HasTargetBytes, Input},
     monitors::MultiMonitor,
     mutators::{
         GrimoireExtensionMutator, GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
@@ -133,36 +133,6 @@ pub fn main() {
             initial_inputs.push(input);
         }
     }
-    /*let mut initial_dir = opt.output.clone();
-    initial_dir.push("corpus");
-    fs::create_dir_all(&initial_dir).unwrap();
-
-    let mut initial_inputs = vec![];
-    if let Some(repro) = opt.repro {
-        for i in 0..NUM_GENERATED {
-            let mut file =
-                fs::File::open(initial_dir.join(format!("id_{i}"))).expect("no file found");
-            let mut buffer = vec![];
-            file.read_to_end(&mut buffer).expect("buffer overflow");
-            let input = GeneralizedInput::new(buffer);
-            initial_inputs.push(input);
-        }
-
-        let input = GeneralizedInput::from_file(repro).unwrap();
-        let n = input.target_bytes();
-        let bytes = n.as_slice();
-        let args: Vec<String> = env::args().collect();
-        if libfuzzer_initialize(&args) == -1 {
-            println!("Warning: LLVMFuzzerInitialize failed with -1");
-        }
-
-        unsafe {
-            println!("Testcase: {}", std::str::from_utf8_unchecked(&bytes));
-        }
-        test_one_input(&bytes);
-
-        return;
-    }*/
 
     println!(
         "Workdir: {:?}",
@@ -193,7 +163,7 @@ pub fn main() {
             // New maximization map feedback linked to the edges observer and the feedback state
             MaxMapFeedback::new_tracking(&edges_observer, true, false),
             // Time feedback, this one does not need a feedback state
-            TimeFeedback::new_with_observer(&time_observer)
+            TimeFeedback::with_observer(&time_observer)
         );
 
         // A feedback to choose if an input is a solution or not
@@ -221,7 +191,7 @@ pub fn main() {
         // A fuzzer with feedbacks and a corpus scheduler
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
         // The wrapped harness function, calling out to the LLVM-style harness
-        let mut harness = |input: &GeneralizedInput| {
+        let mut harness = |input: &BytesInput| {
             let target_bytes = input.target_bytes();
             let bytes = target_bytes.as_slice();
 	    test_one_input(&bytes);
