@@ -14,32 +14,44 @@ use libafl::{
         rands::StdRand,
         shmem::{ShMemProvider, StdShMemProvider},
         tuples::tuple_list,
-        AsMutSlice,
+        AsSlice,
     },
     corpus::{CachedOnDiskCorpus, Corpus, OnDiskCorpus},
     events::EventConfig,
-    executors::{
-	forkserver::{ForkserverExecutor, TimeoutForkserverExecutor},
-        HasObservers,
-    },
+    executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
-    inputs::BytesInput,
+    inputs::{BytesInput, GeneralizedInput, HasTargetBytes, Input},
     monitors::MultiMonitor,
     mutators::{
         GrimoireExtensionMutator, GrimoireRandomDeleteMutator, GrimoireRecursiveReplacementMutator,
         GrimoireStringReplacementMutator, StdScheduledMutator,
     },
-    prelude::{MatchName, ShMem},
-    observers::{HitcountsMapObserver, MapObserver, StdMapObserver, TimeObserver},
+    observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::mutational::StdMutationalStage,
     state::{HasCorpus, StdState},
     Error, Evaluator,
 };
 
-use nix::sys::signal::Signal;
+use hdlibaflexecutor::exec;
+use hdrepresentation::Program;
+use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
+
+fn test_one_input(data: &[u8]) -> ExitKind {
+    let bytes = data.as_slice(); // Data is entire json file as string
+    let p = unsafe { Program::from_str(std::str::from_utf8_unchecked(bytes).to_string()) };
+    if p.is_err() {
+        return ExitKind::Ok;
+    }
+    let prog = p.unwrap();
+    return match exec(&prog, "ext4.img".to_string(), "ext4".to_string()) {
+        Err(_) => ExitKind::Ok,
+        Ok(_) => ExitKind::Ok,
+    };
+}
+
 /// Parses a millseconds int into a [`Duration`], used for commandline arg parsing
 fn timeout_from_millis_str(time: &str) -> Result<Duration, Error> {
     Ok(Duration::from_millis(time.parse()?))
@@ -89,24 +101,15 @@ struct Opt {
         default_value = "1000"
     )]
     timeout: Duration,
-     #[arg(
-        help = "Signal used to stop child",
-        short = 's',
-        long = "signal",
-        value_parser = str::parse::<Signal>,
-        default_value = "SIGKILL"
-    )]
-    signal: Signal,
 }
 
-//const NUM_GENERATED: usize = 28;
+const NUM_GENERATED: usize = 28;
 const CORPUS_CACHE: usize = 4096;
 
 /// The main fn, `no_mangle` as it is a C symbol
 //#[no_mangle]
 //#[allow(clippy::too_many_lines)]
 pub fn main() {
-    const MAP_SIZE: usize = 65536;
     // Registry the metadata types used in this fuzzer
     // Needed only on no_std
     //RegistryBuilder::register::<Tokens>();
@@ -130,18 +133,44 @@ pub fn main() {
             initial_inputs.push(input);
         }
     }
+    /*let mut initial_dir = opt.output.clone();
+    initial_dir.push("corpus");
+    fs::create_dir_all(&initial_dir).unwrap();
+
+    let mut initial_inputs = vec![];
+    if let Some(repro) = opt.repro {
+        for i in 0..NUM_GENERATED {
+            let mut file =
+                fs::File::open(initial_dir.join(format!("id_{i}"))).expect("no file found");
+            let mut buffer = vec![];
+            file.read_to_end(&mut buffer).expect("buffer overflow");
+            let input = GeneralizedInput::new(buffer);
+            initial_inputs.push(input);
+        }
+
+        let input = GeneralizedInput::from_file(repro).unwrap();
+        let n = input.target_bytes();
+        let bytes = n.as_slice();
+        let args: Vec<String> = env::args().collect();
+        if libfuzzer_initialize(&args) == -1 {
+            println!("Warning: LLVMFuzzerInitialize failed with -1");
+        }
+
+        unsafe {
+            println!("Testcase: {}", std::str::from_utf8_unchecked(&bytes));
+        }
+        test_one_input(&bytes);
+
+        return;
+    }*/
 
     println!(
         "Workdir: {:?}",
         env::current_dir().unwrap().to_string_lossy().to_string()
     );
 
-    let mut shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
-    // The coverage map shared between observer and executor
-    let mut shmem = shmem_provider.new_shmem(MAP_SIZE).unwrap();
-    // let the forkserver know the shmid
-    shmem.write_to_env("__AFL_SHM_ID").unwrap();
-    let shmem_buf = shmem.as_mut_slice();
+    let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
+
     let stats = MultiMonitor::new(|s| println!("{s}"));
 
     let mut run_client = |state: Option<StdState<_, _, _, _>>, mut restarting_mgr, _core_id| {
@@ -150,8 +179,11 @@ pub fn main() {
         let mut corpus_dir = opt.output.clone();
         corpus_dir.push("corpus");
 
+        // Create an observation channel using the coverage map
+        let edges = unsafe { &mut EDGES_MAP[0..MAX_EDGES_NUM] };
         let edges_observer =
-		unsafe { HitcountsMapObserver::new(StdMapObserver::new("shared_mem", shmem_buf)) };
+            unsafe { HitcountsMapObserver::new(StdMapObserver::new("edges", edges)) };
+
         // Create an observation channel to keep track of the execution time
         let time_observer = TimeObserver::new("time");
 
@@ -188,30 +220,32 @@ pub fn main() {
 
         // A fuzzer with feedbacks and a corpus scheduler
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
-	// let mut tokens = Tokens::new();
-        let mut forkserver = ForkserverExecutor::builder()
-        .program("./main")
-        .debug_child(true)
-        //.shmem_provider(&mut shmem_provider)
-        //.autotokens(&mut tokens)
-        .parse_afl_cmdline(vec!["@@".to_string(), "ext4-00.img".to_string(), "ext4".to_string()])
-        .coverage_map_size(MAP_SIZE)
-        .build(tuple_list!(time_observer, edges_observer))
-        .unwrap();
+        // The wrapped harness function, calling out to the LLVM-style harness
+        let mut harness = |input: &GeneralizedInput| {
+            let target_bytes = input.target_bytes();
+            let bytes = target_bytes.as_slice();
+	    test_one_input(&bytes);
+            ExitKind::Ok
+        };
 
-        if let Some(dynamic_map_size) = forkserver.coverage_map_size() {
-             forkserver
-            .observers_mut()
-            .match_name_mut::<HitcountsMapObserver<StdMapObserver<'_, u8, false>>>("shared_mem")
-            .unwrap()
-            .downsize_map(dynamic_map_size);
-         }
-	let mut executor = TimeoutForkserverExecutor::with_signal(
-        forkserver,
-        opt.timeout,
-        opt.signal,
-           )
-          .expect("Failed to create the executor.");
+        // Create the executor for an in-process function with one observer for edge coverage and one for the execution time
+        let mut executor = TimeoutExecutor::new(
+            InProcessExecutor::new(
+                &mut harness,
+                tuple_list!(edges_observer, time_observer),
+                &mut fuzzer,
+                &mut state,
+                &mut restarting_mgr,
+            )?,
+            opt.timeout,
+        );
+
+        // The actual target run starts here.
+        // Call LLVMFUzzerInitialize() if present.
+        let args: Vec<String> = env::args().collect();
+        if libfuzzer_initialize(&args) == -1 {
+            println!("Warning: LLVMFuzzerInitialize failed with -1");
+        }
 
         // In case the corpus is empty (on first run), reset
         if state.corpus().count() < 1 {
@@ -254,7 +288,7 @@ pub fn main() {
         .cores(&opt.cores)
         .broker_port(1337)
         .remote_broker_addr(opt.remote_broker_addr)
-        .stdout_file(Some("fuzzer_stdout"))
+        .stdout_file(Some("f"))
         .build()
         .launch()
     {
